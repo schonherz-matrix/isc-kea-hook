@@ -1,0 +1,31 @@
+% SCHMATRIX_MISSING_PARAMETERS Not all parameters are provided
+
+% SCHMATRIX_OPEN_DATABASE Opened database successfully
+
+% SCHMATRIX_DATABASE_FAILED %1
+
+% SCHMATRIX_SQL_DONE At line: %1
+
+% SCHMATRIX_SQL_FAILED SQL error: %1
+
+% SCHMATRIX_QUERIED_IP Queried IP is: %1
+
+% SCHMATRIX_NOT_MUEB Device with MAC: %1 is not a MUEB
+
+% SCHMATRIX_BAD_PORT Incorrect switch port name: %1 with switch: %2
+
+% SCHMATRIX_MUEB_NOT_FOUND MUEB: %1 not found on any switch
+
+% SCHMATRIX_PORT_FOUND MUEB: %1 is connected to switch: %2 port: %3
+
+% SCHMATRIX_SNMP_EXCEPT Exception thrown during communication with switch: %1, %2
+
+% SCHMATRIX_SNMP_ERROR %1
+
+% SCHMATRIX_IP_CONFLICT Could not lease IP: %1 to MUEB: %2 because of IP conflict
+
+% SCHMATRIX_UNKNOWN_ROOM MUEB: %1 connected to a bad room, sw: %2, port: %3
+
+% SCHMATRIX_DHCP_STATE %1
+
+% SCHMATRIX_IP_OVERRIDDEN MUEB: %1 IP's overridden to: %2
