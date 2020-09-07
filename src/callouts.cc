@@ -7,7 +7,6 @@
 #include <QSqlQuery>
 #include <QVariant>
 #include <QtEndian>
-#include <SNMPpp/SNMPpp.hpp>
 #include <algorithm>
 #include <sstream>
 #include <string>
@@ -88,90 +87,23 @@ int lease4_select(CalloutHandle &handle) {
   // Critical part begin, it's not safe to lease IP
   handle.setStatus(CalloutHandle::NEXT_STEP_SKIP);
 
-  // create SNMP session
-  SNMPpp::SessionHandle sessionHandle = nullptr;
+  // Get switch hostname and port name from DHCP option 82
+  // https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst4500/12-2/15-02SG/configuration/guide/config/dhcp.html#57094
+  auto option82{query4Ptr->getOption(82)};
+  auto circuitId{option82->getOption(1)->getData()};
+  auto remoteId{option82->getOption(2)->getData()};
 
-  // MAC address in decimal format
-  std::stringstream ss;
-  for (size_t i = 0; i < HWAddr::ETHERNET_HWADDR_LEN; i++) {
-    ss << '.' << (int)hwaddrPtr->hwaddr_[i];
-  }
-
-  // iterate through the switches
-  quint32 switchId{0};
-  std::string switchIp;
-  std::string portName;
-  for (auto &switchData : g_switchData) {
-    switchIp = std::get<1>(switchData);
-
-    try {
-      SNMPpp::openSession(sessionHandle, "udp:" + switchIp + ":161",
-                          g_snmpCommunity);
-
-      // 1. Get bridge port number || INTEGER
-      SNMPpp::OID o = "1.3.6.1.2.1.17.4.3.1.2" + ss.str();
-      SNMPpp::PDU pdu = SNMPpp::get(sessionHandle, o);
-      auto bridgeportNumber = pdu.varlist().getLong(o);
-
-      // always remember to free the PDU once done with it
-      pdu.free();
-
-      // 2. Get ifIndex || INTEGER
-      o = "1.3.6.1.2.1.17.1.4.1.2." + std::to_string(bridgeportNumber);
-      pdu = SNMPpp::get(sessionHandle, o);
-      auto ifIndex = pdu.varlist().getLong(o);
-      pdu.free();
-
-      // 3. Get ifName || STRING
-      o = "1.3.6.1.2.1.31.1.1.1.1." + std::to_string(ifIndex);
-      pdu = SNMPpp::get(sessionHandle, o);
-      portName = pdu.varlist().getString(o);
-      pdu.free();
-
-      // If the port name is correct we're done
-      if (!portName.empty() && portName.substr(0, 2) == "Gi") {
-        switchId = std::get<0>(switchData);
-
-        LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_PORT_FOUND)
-            .arg(hwaddr)
-            .arg(switchIp)
-            .arg(portName);
-
-        SNMPpp::closeSession(
-            sessionHandle);  // Don't forget to close the session
-        break;
-      } else {
-        // Log incorrect port name e.g. Po1
-        LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_BAD_PORT)
-            .arg(portName)
-            .arg(switchIp);
-      }
-    }
-    // Fatal error no sense to continue
-    // SNMPpp::openSession throws this
-    catch (const std::runtime_error &e) {
-      LOG_FATAL(schmatrix_logger, SCHMATRIX_SNMP_EXCEPT)
-          .arg(switchIp)
-          .arg(e.what());
-      SNMPpp::closeSession(sessionHandle);
-
-      return 1;
-    }
-    // Not a big issue, e.g. PDU is empty => MUEB not connected to the switch
-    catch (const std::exception &e) {
-      LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_SNMP_ERROR).arg(e.what());
-    }
-
-    // Close session before the next iteration
-    SNMPpp::closeSession(sessionHandle);
-  }
-
-  // Handle incorrect port name after all switch
-  if (portName.empty() || portName.substr(0, 2) != "Gi") {
-    LOG_ERROR(schmatrix_logger, SCHMATRIX_MUEB_NOT_FOUND).arg(hwaddr);
-
+  // Check suboption ID types
+  if (circuitId[0] != 0 || remoteId[0] != 1) {
+    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
     return 1;
-  }
+  };
+
+  std::string portName{std::to_string(circuitId[4]) + "/" +
+                       std::to_string(circuitId[5])};
+  std::string switchName{remoteId.begin()+2, remoteId.end()};
+
+  auto switchId{g_switchData.at(switchName)};
 
   QSqlQuery query;
 
@@ -210,7 +142,7 @@ int lease4_select(CalloutHandle &handle) {
     if (query.first() == false) {
       LOG_ERROR(schmatrix_logger, SCHMATRIX_UNKNOWN_ROOM)
           .arg(hwaddr)
-          .arg(switchIp)
+          .arg(switchName)
           .arg(portName);
 
       return 1;

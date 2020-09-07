@@ -14,8 +14,7 @@ using namespace isc::data;
 static int argc{0};
 static QCoreApplication a{argc, nullptr};
 QSqlDatabase g_db;
-std::vector<std::tuple<quint32, std::string>> g_switchData;
-std::string g_snmpCommunity;
+std::unordered_map<std::string, uint> g_switchData;
 
 extern "C" {
 
@@ -24,10 +23,8 @@ int load(LibraryHandle& handle) {
   auto databaseNamePtr = handle.getParameter("databaseName");
   auto userNamePtr = handle.getParameter("userName");
   auto passwordPtr = handle.getParameter("password");
-  auto snmpCommunity = handle.getParameter("snmpCommunity");
 
-  if (!hostNamePtr || !databaseNamePtr || !userNamePtr || !passwordPtr ||
-      !snmpCommunity) {
+  if (!hostNamePtr || !databaseNamePtr || !userNamePtr || !passwordPtr) {
     LOG_FATAL(schmatrix_logger, SCHMATRIX_MISSING_PARAMETERS);
 
     return 1;
@@ -39,8 +36,6 @@ int load(LibraryHandle& handle) {
   g_db.setUserName(QString::fromStdString(userNamePtr->stringValue()));
   g_db.setPassword(QString::fromStdString(passwordPtr->stringValue()));
 
-  g_snmpCommunity = snmpCommunity->stringValue();
-
   if (!g_db.open()) {
     LOG_FATAL(schmatrix_logger, SCHMATRIX_DATABASE_FAILED)
         .arg(g_db.lastError().text().toStdString());
@@ -51,7 +46,7 @@ int load(LibraryHandle& handle) {
   // Cache switch data
   QSqlQuery query;
   query.setForwardOnly(true);
-  query.exec("SELECT switch_id, INET_NTOA(switch_ip) FROM switch");
+  query.exec("SELECT switch_id, name FROM switch");
 
   if (query.size() <= 0) {
     LOG_FATAL(schmatrix_logger, SCHMATRIX_DATABASE_FAILED)
@@ -60,14 +55,14 @@ int load(LibraryHandle& handle) {
     return 1;
   }
 
-  // TODO add checks for other tables
-
   while (query.next()) {
     auto id = query.value(0).toUInt();
-    auto ip = query.value(1).toString().toStdString();
+    auto name = query.value(1).toString().toStdString();
 
-    g_switchData.emplace_back(id, ip);
+    g_switchData.emplace(name, id);
   }
+
+  // TODO add checks for other tables
 
   LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_OPEN_DATABASE);
 

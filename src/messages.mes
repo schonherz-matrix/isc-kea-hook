@@ -12,15 +12,9 @@
 
 % SCHMATRIX_NOT_MUEB Device with MAC: %1 is not a MUEB
 
-% SCHMATRIX_BAD_PORT Incorrect switch port name: %1 with switch: %2
-
 % SCHMATRIX_MUEB_NOT_FOUND MUEB: %1 not found on any switch
 
 % SCHMATRIX_PORT_FOUND MUEB: %1 is connected to switch: %2 port: %3
-
-% SCHMATRIX_SNMP_EXCEPT Exception thrown during communication with switch: %1, %2
-
-% SCHMATRIX_SNMP_ERROR %1
 
 % SCHMATRIX_IP_CONFLICT Could not lease IP: %1 to MUEB: %2 because of IP conflict
 
@@ -29,3 +23,5 @@
 % SCHMATRIX_DHCP_STATE %1
 
 % SCHMATRIX_IP_OVERRIDDEN MUEB: %1 IP's overridden to: %2
+
+% SCHMATRIX_DHCP_OPTION_82_ERROR Invalid DHCP option 82
