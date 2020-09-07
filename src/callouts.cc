@@ -210,7 +210,7 @@ int lease4_renew(CalloutHandle &handle) {
   // Used for DHCPREQUEST check in lease4_select
   handle.setArgument("fake_allocation", (isRequest) ? false : true);
 
-  lease4_select(handle);
+  if(lease4_select(handle) != 0) return 1;
 
   return 0;
 }
