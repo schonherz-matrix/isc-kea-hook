@@ -1,4 +1,4 @@
-# matrix-kea-hook
+# kea-hook
 
 Hook library for ISC Kea(https://kea.isc.org/), the library controls MUEB IP assignment.
 
