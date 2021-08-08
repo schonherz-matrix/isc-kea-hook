@@ -1,8 +1,9 @@
 #pragma once
 
-#include <QSqlDatabase>
-#include <unordered_map>
+#include <pgsql/pgsql_connection.h>
+
+#include <map>
 #include <string>
 
-extern QSqlDatabase g_db;
-extern std::unordered_map<std::string, uint> g_switchData;
+extern std::map<std::string, std::string> g_switch_data;
+extern isc::db::PgSqlConnection* g_pg_sql_connection;

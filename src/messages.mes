@@ -4,21 +4,13 @@
 
 % SCHMATRIX_DATABASE_FAILED %1
 
-% SCHMATRIX_SQL_DONE At line: %1
-
-% SCHMATRIX_SQL_FAILED SQL error: %1
-
 % SCHMATRIX_QUERIED_IP Queried IP is: %1
 
 % SCHMATRIX_NOT_MUEB Device with MAC: %1 is not a MUEB
 
-% SCHMATRIX_MUEB_NOT_FOUND MUEB: %1 not found on any switch
-
-% SCHMATRIX_PORT_FOUND MUEB: %1 is connected to switch: %2 port: %3
-
 % SCHMATRIX_IP_CONFLICT Could not lease IP: %1 to MUEB: %2 because of IP conflict
 
-% SCHMATRIX_UNKNOWN_ROOM MUEB: %1 connected to a bad room, sw: %2, port: %3
+% SCHMATRIX_UNKNOWN_ROOM MUEB: %1 connected to a unknown room, switch: %2, port: %3
 
 % SCHMATRIX_DHCP_STATE %1
 
