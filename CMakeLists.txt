@@ -31,5 +31,5 @@ target_include_directories(${PROJECT_NAME} PRIVATE /usr/include/kea
 
 install(TARGETS ${PROJECT_NAME}
         LIBRARY DESTINATION /usr/lib/x86_64-linux-gnu/kea/hooks)
-install(FILES config/matrix-kea-dhcp4.conf config/matrix-keactrl.conf
+install(FILES config/schmatrix-kea-dhcp4.conf config/schmatrix-keactrl.conf
         DESTINATION /etc/kea/)
