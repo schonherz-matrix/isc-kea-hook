@@ -187,7 +187,7 @@ int lease4_decline(isc::hooks::CalloutHandle &handle) {
   // set IP conflict to true
   const char *values[] = {mac_address.c_str()};
   isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "set_ip_conflict",
-                                        2, values, nullptr, nullptr, 0));
+                                        1, values, nullptr, nullptr, 0));
 
   return 0;
 }
