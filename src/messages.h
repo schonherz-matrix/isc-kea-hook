@@ -1,4 +1,4 @@
-// File created from messages.mes on Sun Aug 08 2021 19:54
+// File created from messages.mes on Thu Sep 02 2021 20:36
 
 #ifndef MESSAGES_H
 #define MESSAGES_H
@@ -11,6 +11,7 @@ extern const isc::log::MessageID SCHMATRIX_DHCP_STATE;
 extern const isc::log::MessageID SCHMATRIX_IP_CONFLICT;
 extern const isc::log::MessageID SCHMATRIX_IP_OVERRIDDEN;
 extern const isc::log::MessageID SCHMATRIX_MISSING_PARAMETERS;
+extern const isc::log::MessageID SCHMATRIX_MULTIPLE_MUEB;
 extern const isc::log::MessageID SCHMATRIX_NOT_MUEB;
 extern const isc::log::MessageID SCHMATRIX_OPEN_DATABASE;
 extern const isc::log::MessageID SCHMATRIX_QUERIED_IP;

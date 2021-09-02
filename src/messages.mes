@@ -17,3 +17,5 @@
 % SCHMATRIX_IP_OVERRIDDEN MUEB: %1 IP's overridden to: %2
 
 % SCHMATRIX_DHCP_OPTION_82_ERROR Invalid DHCP option 82
+
+% SCHMATRIX_MULTIPLE_MUEB Multiple MUEBs in the same room %1

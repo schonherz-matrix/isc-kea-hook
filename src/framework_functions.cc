@@ -42,15 +42,26 @@ int load(isc::hooks::LibraryHandle& handle) {
   }
 
   // Store prepared statements
-  std::array<isc::db::PgSqlTaggedStatement, 6> statements{
+  std::array<isc::db::PgSqlTaggedStatement, 8> statements{
       {{1,
         {isc::db::OID_TEXT},
         "ip_conflict",
         "select ip_conflict::int from mueb where mac_address = $1::macaddr"},
+       {2,
+        {isc::db::OID_TEXT, isc::db::OID_TEXT},
+        "mueb_in_room",
+        "select room_id from port p join room r using(room_id) where p.port_id "
+        "= $1 and p.switch_id = $2::inet"},
+       {2,
+        {isc::db::OID_TEXT, isc::db::OID_TEXT},
+        "mueb_count_in_room",
+        "select count(*) from port p join mueb m using(port_id, switch_id) "
+        "where m.mac_address::macaddr != $1 and p.room_id = $2"},
        {1,
         {isc::db::OID_TEXT},
         "ip_override",
-        "select ip_override from mueb where mac_address = $1::macaddr and ip_override "
+        "select ip_override from mueb where mac_address = $1::macaddr and "
+        "ip_override "
         "is not null"},
        {2,
         {isc::db::OID_TEXT, isc::db::OID_TEXT},
@@ -65,8 +76,10 @@ int load(isc::hooks::LibraryHandle& handle) {
        {3,
         {isc::db::OID_TEXT, isc::db::OID_TEXT, isc::db::OID_TEXT},
         "insert_mueb",
-        "insert into mueb (mac_address) values ($1::macaddr) on conflict (mac_address) do update set "
-        "port_id = $2, switch_id = $3::inet where mueb.mac_address = $1::macaddr"},
+        "insert into mueb (mac_address) values ($1::macaddr) on conflict "
+        "(mac_address) do update set "
+        "port_id = $2, switch_id = $3::inet where mueb.mac_address = "
+        "$1::macaddr"},
        {1,
         {isc::db::OID_TEXT},
         "set_ip_conflict",

@@ -6,11 +6,42 @@
 #include <hooks/hooks.h>
 #include <pgsql/pgsql_connection.h>
 
+#include <algorithm>
 #include <cstdlib>
 #include <string>
+#include <tuple>
 
 #include "globals.h"
 #include "logger.h"
+
+static std::tuple<int, std::string, std::string, std::string> parseOption82(
+    const isc::dhcp::Pkt4Ptr &query4_ptr) {
+  /* Get switch hostname and port name from DHCP option 82
+   * https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst4500/12-2/15-02SG/configuration/guide/config/dhcp.html#57094
+   */
+  auto option82{query4_ptr->getOption(82)};
+  if (!option82) {
+    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
+    return std::make_tuple(1, nullptr, nullptr, nullptr);
+  }
+
+  auto circuit_id{option82->getOption(1)->getData()};
+  auto remote_id{option82->getOption(2)->getData()};
+
+  // Check suboption ID types
+  if (circuit_id[0] != 0 || remote_id[0] != 1) {
+    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
+    return std::make_tuple(1, nullptr, nullptr, nullptr);
+  }
+
+  std::string port_id{std::to_string(circuit_id[4]) + "/" +
+                      std::to_string(circuit_id[5])};
+  std::string switch_name{remote_id.begin() + 2, remote_id.end()};
+  auto switch_id{g_switch_data.at(switch_name)};
+
+  return std::make_tuple(1, std::move(switch_name), std::move(port_id),
+                         std::move(switch_id));
+}
 
 extern "C" {
 // Check IP conflict
@@ -18,14 +49,50 @@ int pkt4_receive(isc::hooks::CalloutHandle &handle) {
   isc::dhcp::Pkt4Ptr query4_ptr;
   handle.getArgument("query4", query4_ptr);
 
-  const std::string &mac_address{query4_ptr->getHWAddr()->toText(false)};
-  const char *values[]{mac_address.c_str()};
-  isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "ip_conflict", 1,
+  // Skip non MUEB devices check
+  auto hwaddr_ptr = query4_ptr->getHWAddr();
+  if (hwaddr_ptr->hwaddr_[0] != 0x54 || hwaddr_ptr->hwaddr_[1] != 0x10 ||
+      hwaddr_ptr->hwaddr_[2] != 0xEC) {
+    return 0;
+  }
+
+  const auto [result, switch_name, port_id, switch_id] =
+      parseOption82(query4_ptr);
+  const std::string &mac_address{hwaddr_ptr->toText(false)};
+  const char *values[2] = {port_id.c_str(), switch_id.c_str()};
+
+  // Get room id
+  isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "mueb_in_room", 2,
                                         values, nullptr, nullptr, 0));
-  /* Drop packet
-   * MUEB with IP conflict needs manual fix
+  // Handle incorrect room
+  if (r.getRows() < 0) {
+    LOG_ERROR(schmatrix_logger, SCHMATRIX_UNKNOWN_ROOM)
+        .arg(mac_address)
+        .arg(switch_name)
+        .arg(port_id);
+    return 1;
+  }
+
+  const auto room_id{PQgetvalue(r, 0, 0)};
+  values[0] = mac_address.c_str();
+  values[1] = room_id;
+
+  // Drop packet if multiple MUEBs(excluding current) is in the same room
+  isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection,
+                                         "mueb_count_in_room", 2, values,
+                                         nullptr, nullptr, 0));
+  if (r.getRows() > 0 && std::atoi(PQgetvalue(r, 0, 0)) > 0) {
+    LOG_WARN(schmatrix_logger, SCHMATRIX_MULTIPLE_MUEB).arg(room_id);
+    handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
+    return 0;
+  }
+
+  isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "ip_conflict", 1,
+                                         values, nullptr, nullptr, 0));
+  /* Drop packet when a MUEB has IP conflict
+   * Needs manual fix
    */
-  if (r.getRows() > 0 && atoi(PQgetvalue(r, 0, 0)) > 0) {
+  if (r.getRows() > 0 && std::atoi(PQgetvalue(r, 0, 0)) > 0) {
     handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
   }
 
@@ -60,22 +127,10 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
   // Critical part begin, it's not safe to lease IP yet
   handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_SKIP);
 
-  // Get switch hostname and port name from DHCP option 82
-  // https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst4500/12-2/15-02SG/configuration/guide/config/dhcp.html#57094
-  auto option82{query4_ptr->getOption(82)};
-  auto circuit_id{option82->getOption(1)->getData()};
-  auto remote_id{option82->getOption(2)->getData()};
-
-  // Check suboption ID types
-  if (circuit_id[0] != 0 || remote_id[0] != 1) {
-    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
+  auto [result, switch_name, port_id, switch_id] = parseOption82(query4_ptr);
+  if (result != 0) {
     return 1;
   }
-
-  std::string port_id{std::to_string(circuit_id[4]) + "/" +
-                      std::to_string(circuit_id[5])};
-  std::string switch_name{remote_id.begin() + 2, remote_id.end()};
-  auto switch_id{g_switch_data.at(switch_name)};
 
   // Check for IP override
   const char *values[3] = {mac_address.c_str()};
