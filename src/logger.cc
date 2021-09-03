@@ -1,3 +1,3 @@
 #include "logger.h"
 
-isc::log::Logger schmatrix_logger("schmatrix");
+isc::log::Logger kea_hook_logger("kea_hook");

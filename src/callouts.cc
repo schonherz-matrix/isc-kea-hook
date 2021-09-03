@@ -7,7 +7,6 @@
 #include <pgsql/pgsql_connection.h>
 
 #include <algorithm>
-#include <cstdlib>
 #include <string>
 #include <tuple>
 
@@ -15,65 +14,77 @@
 #include "logger.h"
 
 static std::tuple<int, std::string, std::string, std::string> parseOption82(
-    const isc::dhcp::Pkt4Ptr &query4_ptr) {
+    const isc::dhcp::Pkt4Ptr& query4_ptr) {
   /* Get switch hostname and port name from DHCP option 82
+   * Also check if option 82 is valid
    * https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst4500/12-2/15-02SG/configuration/guide/config/dhcp.html#57094
    */
-  auto option82{query4_ptr->getOption(82)};
-  if (!option82) {
-    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
+  const auto& option82{query4_ptr->getOption(82)};
+  if (!option82 || !option82->valid() || !option82->getOption(1) ||
+      !option82->getOption(1)->valid() || !option82->getOption(2) ||
+      !option82->getOption(2)->valid()) {
+    LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
     return std::make_tuple(1, nullptr, nullptr, nullptr);
   }
 
-  auto circuit_id{option82->getOption(1)->getData()};
-  auto remote_id{option82->getOption(2)->getData()};
+  const auto& circuit_id{option82->getOption(1)->getData()};
+  const auto& remote_id{option82->getOption(2)->getData()};
 
   // Check suboption ID types
   if (circuit_id[0] != 0 || remote_id[0] != 1) {
-    LOG_FATAL(schmatrix_logger, SCHMATRIX_DHCP_OPTION_82_ERROR);
+    LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
     return std::make_tuple(1, nullptr, nullptr, nullptr);
   }
 
   std::string port_id{std::to_string(circuit_id[4]) + "/" +
                       std::to_string(circuit_id[5])};
   std::string switch_name{remote_id.begin() + 2, remote_id.end()};
-  auto switch_id{g_switch_data.at(switch_name)};
 
-  return std::make_tuple(1, std::move(switch_name), std::move(port_id),
-                         std::move(switch_id));
+  try {
+    const auto& switch_id{g_switch_data.at(switch_name)};
+    return std::make_tuple(0, std::move(switch_name), std::move(port_id),
+                           switch_id);
+  } catch (const std::out_of_range& e) {
+    LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
+    return std::make_tuple(1, nullptr, nullptr, nullptr);
+  }
 }
 
 extern "C" {
 // Check IP conflict
-int pkt4_receive(isc::hooks::CalloutHandle &handle) {
+int pkt4_receive(isc::hooks::CalloutHandle& handle) {
   isc::dhcp::Pkt4Ptr query4_ptr;
   handle.getArgument("query4", query4_ptr);
 
-  // Skip non MUEB devices check
-  auto hwaddr_ptr = query4_ptr->getHWAddr();
+  // Skip non MUEB devices
+  const auto& hwaddr_ptr = query4_ptr->getHWAddr();
+  const auto& mac_address{hwaddr_ptr->toText(false)};
   if (hwaddr_ptr->hwaddr_[0] != 0x54 || hwaddr_ptr->hwaddr_[1] != 0x10 ||
       hwaddr_ptr->hwaddr_[2] != 0xEC) {
     return 0;
   }
 
-  const auto [result, switch_name, port_id, switch_id] =
+  const auto& [result, switch_name, port_id, switch_id] =
       parseOption82(query4_ptr);
-  const std::string &mac_address{hwaddr_ptr->toText(false)};
-  const char *values[2] = {port_id.c_str(), switch_id.c_str()};
+  if (result != 0) {
+    return 1;
+  }
+
+  const char* values[2] = {port_id.c_str(), switch_id.c_str()};
 
   // Get room id
   isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "mueb_in_room", 2,
                                         values, nullptr, nullptr, 0));
   // Handle incorrect room
-  if (r.getRows() < 0) {
-    LOG_ERROR(schmatrix_logger, SCHMATRIX_UNKNOWN_ROOM)
+  if (r.getRows() <= 0) {
+    LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
         .arg(mac_address)
         .arg(switch_name)
         .arg(port_id);
     return 1;
   }
 
-  const auto room_id{PQgetvalue(r, 0, 0)};
+  const auto& room_id{PQgetvalue(r, 0, 0)};
   values[0] = mac_address.c_str();
   values[1] = room_id;
 
@@ -81,44 +92,52 @@ int pkt4_receive(isc::hooks::CalloutHandle &handle) {
   isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection,
                                          "mueb_count_in_room", 2, values,
                                          nullptr, nullptr, 0));
-  if (r.getRows() > 0 && std::atoi(PQgetvalue(r, 0, 0)) > 0) {
-    LOG_WARN(schmatrix_logger, SCHMATRIX_MULTIPLE_MUEB).arg(room_id);
-    handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
-    return 0;
-  }
 
-  isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "ip_conflict", 1,
-                                         values, nullptr, nullptr, 0));
-  /* Drop packet when a MUEB has IP conflict
-   * Needs manual fix
-   */
-  if (r.getRows() > 0 && std::atoi(PQgetvalue(r, 0, 0)) > 0) {
-    handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
+  try {
+    if (std::stoi(PQgetvalue(r2, 0, 0)) > 0) {
+      LOG_WARN(kea_hook_logger, KEA_HOOK_MULTIPLE_MUEB).arg(room_id);
+      handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
+      return 0;
+    }
+
+    isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "ip_conflict",
+                                           1, values, nullptr, nullptr, 0));
+    /* Drop packet when a MUEB has IP conflict
+     * Needs manual fix
+     */
+    if (r3.getRows() > 0 && std::stoi(PQgetvalue(r3, 0, 0)) > 0) {
+      handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
+    }
+  } catch (const std::exception& e) {
+    LOG_ERROR(kea_hook_logger, KEA_HOOK_DATABASE_FAILED).arg(e.what());
+    return 1;
   }
 
   return 0;
 }
 
 // handle IP lease
-int lease4_select(isc::hooks::CalloutHandle &handle) {
+int lease4_select(isc::hooks::CalloutHandle& handle) {
   isc::dhcp::Pkt4Ptr query4_ptr;
   handle.getArgument("query4", query4_ptr);
+
   isc::dhcp::Lease4Ptr lease4_ptr;
   handle.getArgument("lease4", lease4_ptr);
+
   bool fake_allocation;
   handle.getArgument("fake_allocation", fake_allocation);
 
-  LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_DHCP_STATE)
+  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
       .arg((fake_allocation) ? "---[DISCOVER]---" : "---[REQUEST]---");
 
-  auto hwaddr_ptr = query4_ptr->getHWAddr();
-  auto mac_address = hwaddr_ptr->toText(false);
+  const auto& hwaddr_ptr = query4_ptr->getHWAddr();
+  const auto& mac_address = hwaddr_ptr->toText(false);
 
   // Allocate IP for non MUEB devices
   if (hwaddr_ptr->hwaddr_[0] != 0x54 || hwaddr_ptr->hwaddr_[1] != 0x10 ||
       hwaddr_ptr->hwaddr_[2] != 0xEC) {
-    LOG_INFO(schmatrix_logger, SCHMATRIX_NOT_MUEB).arg(mac_address);
-    LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_DHCP_STATE)
+    LOG_INFO(kea_hook_logger, KEA_HOOK_NOT_MUEB).arg(mac_address);
+    LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
         .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
 
     return 0;
@@ -133,22 +152,26 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
   }
 
   // Check for IP override
-  const char *values[3] = {mac_address.c_str()};
+  const char* values[3] = {mac_address.c_str()};
   isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "ip_override", 1,
                                         values, nullptr, nullptr, 0));
-  bool ip_overriden{r.getRows() > 0};
 
-  // Query DB to get IP address
   std::string ip_address;
-  if (!ip_overriden) {
+  if (r.getRows() > 0) {
+    // IP is overridden
+    ip_address = PQgetvalue(r, 0, 0);
+    LOG_INFO(kea_hook_logger, KEA_HOOK_IP_OVERRIDDEN)
+        .arg(mac_address)
+        .arg(ip_address);
+  } else {
     values[0] = port_id.c_str();
     values[1] = switch_id.c_str();
     isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection, "ip_address",
                                            2, values, nullptr, nullptr, 0));
 
     // Handle incorrect room
-    if (r2.getRows() < 0) {
-      LOG_ERROR(schmatrix_logger, SCHMATRIX_UNKNOWN_ROOM)
+    if (r2.getRows() <= 0) {
+      LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
           .arg(mac_address)
           .arg(switch_name)
           .arg(port_id);
@@ -157,11 +180,6 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
     }
 
     ip_address = PQgetvalue(r2, 0, 0);
-  } else {
-    ip_address = PQgetvalue(r, 0, 0);
-    LOG_INFO(schmatrix_logger, SCHMATRIX_IP_OVERRIDDEN)
-        .arg(mac_address)
-        .arg(ip_address);
   }
 
   // Modify kea's IP lease
@@ -172,12 +190,11 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
   // Critical part end, it's safe to lease IP now
   handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_CONTINUE);
 
-  LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_QUERIED_IP).arg(ip_address);
-
-  LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_DHCP_STATE)
+  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_QUERIED_IP).arg(ip_address);
+  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
       .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
 
-  // Save to DB when the DHCP state is DHCPREQUEST For debugging purposes
+  // Save to DB when the DHCP state is DHCPREQUEST
   if (!fake_allocation) {
     // Clear switch-port
     values[0] = port_id.c_str();
@@ -189,8 +206,9 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
     values[0] = mac_address.c_str();
     values[1] = port_id.c_str();
     values[2] = switch_id.c_str();
-    isc::db::PgSqlResult r4(PQexecPrepared(*g_pg_sql_connection, "insert_mueb",
-                                           3, values, nullptr, nullptr, 0));
+    isc::db::PgSqlResult r4(PQexecPrepared(*g_pg_sql_connection,
+                                           "insert_or_mueb", 3, values, nullptr,
+                                           nullptr, 0));
   } else {
     /* Handle device swap
      * Remove the current IP from the lease DB before DHCPREQUEST
@@ -208,17 +226,17 @@ int lease4_select(isc::hooks::CalloutHandle &handle) {
 /* Handle lease after one allocation
  * State after DHCPDISCOVER, DHCPREQUEST(renew)
  */
-int lease4_renew(isc::hooks::CalloutHandle &handle) {
+int lease4_renew(isc::hooks::CalloutHandle& handle) {
   isc::dhcp::Pkt4Ptr query4Ptr;
   handle.getArgument("query4", query4Ptr);
-  auto isRequest = query4Ptr->getType() == isc::dhcp::DHCPREQUEST;
 
-  std::string tmp = (isRequest) ? "---[REQUEST" : "---[DISCOVER";
+  const auto& isRequest = query4Ptr->getType() == isc::dhcp::DHCPREQUEST;
+  std::string tmp{(isRequest) ? "---[REQUEST" : "---[DISCOVER"};
 
-  LOG_DEBUG(schmatrix_logger, 0, SCHMATRIX_DHCP_STATE).arg(tmp + "(RENEW)]---");
+  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE).arg(tmp + "(RENEW)]---");
 
   // Used for DHCPREQUEST check in lease4_select
-  handle.setArgument("fake_allocation", !(isRequest));
+  handle.setArgument("fake_allocation", !isRequest);
 
   if (lease4_select(handle) != 0) {
     return 1;
@@ -228,19 +246,20 @@ int lease4_renew(isc::hooks::CalloutHandle &handle) {
 }
 
 // Handle IP conflict
-int lease4_decline(isc::hooks::CalloutHandle &handle) {
+int lease4_decline(isc::hooks::CalloutHandle& handle) {
   isc::dhcp::Pkt4Ptr query4Ptr;
   handle.getArgument("query4", query4Ptr);
+
   isc::dhcp::Lease4Ptr lease4Ptr;
   handle.getArgument("lease4", lease4Ptr);
 
-  const std::string &mac_address = query4Ptr->getHWAddr()->toText(false);
-  LOG_FATAL(schmatrix_logger, SCHMATRIX_IP_CONFLICT)
+  const auto& mac_address{query4Ptr->getHWAddr()->toText(false)};
+  LOG_FATAL(kea_hook_logger, KEA_HOOK_IP_CONFLICT)
       .arg(lease4Ptr->addr_.toText())
       .arg(mac_address);
 
   // set IP conflict to true
-  const char *values[] = {mac_address.c_str()};
+  const char* values[] = {mac_address.c_str()};
   isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "set_ip_conflict",
                                         1, values, nullptr, nullptr, 0));
 

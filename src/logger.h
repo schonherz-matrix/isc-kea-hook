@@ -1,5 +1,5 @@
-#ifndef SCHMATRIX_LOGGER_H
-#define SCHMATRIX_LOGGER_H
+#ifndef KEA_HOOK_SRC_LOGGER_H_
+#define KEA_HOOK_SRC_LOGGER_H_
 
 #include <log/logger.h>
 #include <log/macros.h>
@@ -7,6 +7,6 @@
 
 #include "messages.h"
 
-extern isc::log::Logger schmatrix_logger;
+extern isc::log::Logger kea_hook_logger;
 
-#endif
+#endif // KEA_HOOK_SRC_LOGGER_H_
