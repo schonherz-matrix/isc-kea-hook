@@ -39,11 +39,7 @@ int load(isc::hooks::LibraryHandle& handle) {
 
     // Store prepared statements
     std::array<isc::db::PgSqlTaggedStatement, 8> statements{
-        {{1,
-          {829},
-          "ip_conflict",
-          "select ip_conflict::int from mueb where mac_address = $1"},
-         {2,
+        {{2,
           {isc::db::OID_TEXT, 869},
           "mueb_in_room",
           "select room_id from port p join room r using(room_id) where "
@@ -54,6 +50,10 @@ int load(isc::hooks::LibraryHandle& handle) {
           "mueb_count_in_room",
           "select count(*) from port p join mueb m using(port_id, switch_id) "
           "where m.mac_address != $1 and p.room_id = $2"},
+         {1,
+          {829},
+          "ip_conflict",
+          "select ip_conflict::int from mueb where mac_address = $1"},
          {1,
           {829},
           "ip_override",

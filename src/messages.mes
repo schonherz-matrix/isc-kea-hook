@@ -2,6 +2,8 @@
 
 % KEA_HOOK_OPEN_DATABASE Opened database successfully
 
+% KEA_HOOK_FAILED %1
+
 % KEA_HOOK_DATABASE_FAILED %1
 
 % KEA_HOOK_QUERIED_IP Queried IP is: %1

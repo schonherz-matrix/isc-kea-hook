@@ -36,14 +36,13 @@ static std::tuple<int, std::string, std::string, std::string> parseOption82(
     return std::make_tuple(1, nullptr, nullptr, nullptr);
   }
 
-  std::string port_id{std::to_string(circuit_id[4]) + "/" +
+  const auto& port_id{std::to_string(circuit_id[4]) + "/" +
                       std::to_string(circuit_id[5])};
   std::string switch_name{remote_id.begin() + 2, remote_id.end()};
 
   try {
     const auto& switch_id{g_switch_data.at(switch_name)};
-    return std::make_tuple(0, std::move(switch_name), std::move(port_id),
-                           switch_id);
+    return std::make_tuple(0, std::move(switch_name), port_id, switch_id);
   } catch (const std::out_of_range& e) {
     LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
     return std::make_tuple(1, nullptr, nullptr, nullptr);
@@ -145,82 +144,96 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
 
   // Critical part begin, it's not safe to lease IP yet
   handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_SKIP);
+  try {
+    isc::db::PgSqlTransaction transaction(*g_pg_sql_connection);
 
-  auto [result, switch_name, port_id, switch_id] = parseOption82(query4_ptr);
-  if (result != 0) {
-    return 1;
-  }
-
-  // Check for IP override
-  const char* values[3] = {mac_address.c_str()};
-  isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "ip_override", 1,
-                                        values, nullptr, nullptr, 0));
-
-  std::string ip_address;
-  if (r.getRows() > 0) {
-    // IP is overridden
-    ip_address = PQgetvalue(r, 0, 0);
-    LOG_INFO(kea_hook_logger, KEA_HOOK_IP_OVERRIDDEN)
-        .arg(mac_address)
-        .arg(ip_address);
-  } else {
-    values[0] = port_id.c_str();
-    values[1] = switch_id.c_str();
-    isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection, "ip_address",
-                                           2, values, nullptr, nullptr, 0));
-
-    // Handle incorrect room
-    if (r2.getRows() <= 0) {
-      LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
-          .arg(mac_address)
-          .arg(switch_name)
-          .arg(port_id);
-
+    auto [result, switch_name, port_id, switch_id] = parseOption82(query4_ptr);
+    if (result != 0) {
       return 1;
     }
 
-    ip_address = PQgetvalue(r2, 0, 0);
-  }
+    // Check for IP override
+    const char* values[3] = {mac_address.c_str()};
+    isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "ip_override",
+                                          1, values, nullptr, nullptr, 0));
 
-  // Modify kea's IP lease
-  lease4_ptr->addr_ = isc::asiolink::IOAddress(ip_address);
-  handle.setArgument("lease4", lease4_ptr);
+    std::string ip_address;
+    if (r.getRows() > 0) {
+      // IP is overridden
+      ip_address = PQgetvalue(r, 0, 0);
+      LOG_INFO(kea_hook_logger, KEA_HOOK_IP_OVERRIDDEN)
+          .arg(mac_address)
+          .arg(ip_address);
+    } else {
+      values[0] = port_id.c_str();
+      values[1] = switch_id.c_str();
+      isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection, "ip_address",
+                                             2, values, nullptr, nullptr, 0));
 
-  // Basic DHCP functionality ends here
-  // Critical part end, it's safe to lease IP now
-  handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_CONTINUE);
+      // Handle incorrect room
+      if (r2.getRows() <= 0) {
+        LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
+            .arg(mac_address)
+            .arg(switch_name)
+            .arg(port_id);
 
-  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_QUERIED_IP).arg(ip_address);
-  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
-      .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
+        return 1;
+      }
 
-  // Save to DB when the DHCP state is DHCPREQUEST
-  if (!fake_allocation) {
-    // Clear switch-port
-    values[0] = port_id.c_str();
-    values[1] = switch_id.c_str();
-    isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "clear_port",
-                                           2, values, nullptr, nullptr, 0));
-
-    // Insert MUEB or update switch-port
-    values[0] = mac_address.c_str();
-    values[1] = port_id.c_str();
-    values[2] = switch_id.c_str();
-    isc::db::PgSqlResult r4(PQexecPrepared(*g_pg_sql_connection,
-                                           "insert_or_mueb", 3, values, nullptr,
-                                           nullptr, 0));
-  } else {
-    /* Handle device swap
-     * Remove the current IP from the lease DB before DHCPREQUEST
-     * This step is required to make the device swap work otherwise the server
-     * sends DHCPNAK
-     */
-    if (isc::dhcp::LeaseMgrFactory::haveInstance()) {
-      isc::dhcp::LeaseMgrFactory::instance().deleteLease(lease4_ptr);
+      ip_address = PQgetvalue(r2, 0, 0);
     }
-  }
 
-  return 0;
+    // Modify kea's IP lease
+    lease4_ptr->addr_ = isc::asiolink::IOAddress(ip_address);
+    handle.setArgument("lease4", lease4_ptr);
+
+    // Basic DHCP functionality ends here
+    // Critical part end, it's safe to lease IP now
+    handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_CONTINUE);
+
+    LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_QUERIED_IP).arg(ip_address);
+    LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
+        .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
+
+    // Save to DB when the DHCP state is DHCPREQUEST
+    if (!fake_allocation) {
+      // Clear switch-port
+      isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "clear_port",
+                                             2, values, nullptr, nullptr, 0));
+
+      // Insert MUEB or update switch-port
+      values[0] = mac_address.c_str();
+      values[1] = port_id.c_str();
+      values[2] = switch_id.c_str();
+      isc::db::PgSqlResult r4(PQexecPrepared(*g_pg_sql_connection,
+                                             "insert_or_update_mueb", 3, values,
+                                             nullptr, nullptr, 0));
+    } else {
+      /* Handle device swap
+       * Remove the current IP from the lease DB before DHCPREQUEST
+       * This step is required to make the device swap work otherwise the server
+       * sends DHCPNAK
+       */
+      if (isc::dhcp::LeaseMgrFactory::haveInstance()) {
+        isc::dhcp::LeaseMgrFactory::instance().deleteLease(lease4_ptr);
+      } else {
+        /* Should not happen this needs manual fix
+         * Proceed as normal
+         */
+        LOG_ERROR(kea_hook_logger, KEA_HOOK_FAILED)
+            .arg(
+                "No lease manager available, MUEB device swap will not work! "
+                "This should not happen, check lease database configuration!");
+      }
+    }
+
+    transaction.commit();
+    return 0;
+  } catch (const std::exception& e) {
+    LOG_FATAL(kea_hook_logger, KEA_HOOK_FAILED).arg(e.what());
+
+    return 1;
+  }
 }
 
 /* Handle lease after one allocation

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(
   kea-hook
-  VERSION 3.0
+  VERSION 3.0.0
   DESCRIPTION
     "Hook library for isc kea(https://kea.isc.org/), the library controls IP assignment."
   LANGUAGES CXX)
