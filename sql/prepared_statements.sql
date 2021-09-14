@@ -1,3 +1,6 @@
+-- check switch
+select count(*) from switch where switch_id = :switch_id;
+
 -- ip_conflict
 select ip_conflict::int from mueb where mac_address = :mac;
 

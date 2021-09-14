@@ -6,7 +6,6 @@
 #include "globals.h"
 #include "logger.h"
 
-std::map<std::string, std::string> g_switch_data;
 isc::db::PgSqlConnection* g_pg_sql_connection;
 
 extern "C" {
@@ -38,9 +37,13 @@ int load(isc::hooks::LibraryHandle& handle) {
     g_pg_sql_connection->openDatabase();
 
     // Store prepared statements
-    std::array<isc::db::PgSqlTaggedStatement, 8> statements{
-        {{2,
-          {isc::db::OID_TEXT, 869},
+    std::array<isc::db::PgSqlTaggedStatement, 9> statements{
+        {{1,
+          {isc::db::OID_TEXT},
+          "check_switch",
+          "select count(*) from switch where switch_id = $1"},
+         {2,
+          {isc::db::OID_TEXT, isc::db::OID_TEXT},
           "mueb_in_room",
           "select room_id from port p join room r using(room_id) where "
           "p.port_id "
@@ -61,18 +64,18 @@ int load(isc::hooks::LibraryHandle& handle) {
           "ip_override "
           "is not null"},
          {2,
-          {isc::db::OID_TEXT, 869},
+          {isc::db::OID_TEXT, isc::db::OID_TEXT},
           "ip_address",
           "select ip_address from port p join room r using(room_id) where "
           "p.port_id "
           "= $1 and switch_id = $2"},
          {2,
-          {isc::db::OID_TEXT, 869},
+          {isc::db::OID_TEXT, isc::db::OID_TEXT},
           "clear_port",
           "update mueb set port_id = null, switch_id = null where port_id = $1 "
           "and switch_id = $2"},
          {3,
-          {829, isc::db::OID_TEXT, 869},
+          {829, isc::db::OID_TEXT, isc::db::OID_TEXT},
           "insert_or_update_mueb",
           "insert into mueb (mac_address) values ($1) on conflict "
           "(mac_address) do update set "
@@ -88,20 +91,6 @@ int load(isc::hooks::LibraryHandle& handle) {
   } catch (const std::exception& e) {
     LOG_FATAL(kea_hook_logger, KEA_HOOK_DATABASE_FAILED).arg(e.what());
     return 1;
-  }
-
-  // Cache switch data
-  isc::db::PgSqlResult r(
-      PQexec(*g_pg_sql_connection, "select hostname, switch_id from switch"));
-  if (r.getRows() <= 0) {
-    LOG_FATAL(kea_hook_logger, KEA_HOOK_DATABASE_FAILED)
-        .arg("Switch table is empty!");
-
-    return 1;
-  }
-
-  for (int i = 0; i < r.getRows(); ++i) {
-    g_switch_data.emplace(PQgetvalue(r, i, 0), PQgetvalue(r, i, 1));
   }
 
   LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_OPEN_DATABASE);

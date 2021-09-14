@@ -13,7 +13,7 @@
 #include "globals.h"
 #include "logger.h"
 
-static std::tuple<int, std::string, std::string, std::string> parseOption82(
+static std::tuple<int, std::string, std::string> parseOption82(
     const isc::dhcp::Pkt4Ptr& query4_ptr) {
   /* Get switch hostname and port name from DHCP option 82
    * Also check if option 82 is valid
@@ -24,7 +24,7 @@ static std::tuple<int, std::string, std::string, std::string> parseOption82(
       !option82->getOption(1)->valid() || !option82->getOption(2) ||
       !option82->getOption(2)->valid()) {
     LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
-    return std::make_tuple(1, nullptr, nullptr, nullptr);
+    return std::make_tuple(1, nullptr, nullptr);
   }
 
   const auto& circuit_id{option82->getOption(1)->getData()};
@@ -33,20 +33,24 @@ static std::tuple<int, std::string, std::string, std::string> parseOption82(
   // Check suboption ID types
   if (circuit_id[0] != 0 || remote_id[0] != 1) {
     LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
-    return std::make_tuple(1, nullptr, nullptr, nullptr);
+    return std::make_tuple(1, nullptr, nullptr);
   }
 
   const auto& port_id{std::to_string(circuit_id[4]) + "/" +
                       std::to_string(circuit_id[5])};
-  std::string switch_name{remote_id.begin() + 2, remote_id.end()};
+  std::string switch_id{remote_id.begin() + 2, remote_id.end()};
 
-  try {
-    const auto& switch_id{g_switch_data.at(switch_name)};
-    return std::make_tuple(0, std::move(switch_name), port_id, switch_id);
-  } catch (const std::out_of_range& e) {
+  // Check if switch exists
+  const char* values[1] = {switch_id.c_str()};
+  isc::db::PgSqlResult r(PQexecPrepared(*g_pg_sql_connection, "check_switch", 1,
+                                        values, nullptr, nullptr, 0));
+
+  if (r.getRows() <= 0 || std::stoi(PQgetvalue(r, 0, 0)) <= 0) {
     LOG_FATAL(kea_hook_logger, KEA_HOOK_DHCP_OPTION_82_ERROR);
-    return std::make_tuple(1, nullptr, nullptr, nullptr);
+    return std::make_tuple(1, nullptr, nullptr);
   }
+
+  return std::make_tuple(0, std::move(switch_id), port_id);
 }
 
 extern "C" {
@@ -63,8 +67,7 @@ int pkt4_receive(isc::hooks::CalloutHandle& handle) {
     return 0;
   }
 
-  const auto& [result, switch_name, port_id, switch_id] =
-      parseOption82(query4_ptr);
+  const auto& [result, switch_id, port_id] = parseOption82(query4_ptr);
   if (result != 0) {
     return 1;
   }
@@ -78,7 +81,7 @@ int pkt4_receive(isc::hooks::CalloutHandle& handle) {
   if (r.getRows() <= 0) {
     LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
         .arg(mac_address)
-        .arg(switch_name)
+        .arg(switch_id)
         .arg(port_id);
     return 1;
   }
@@ -147,7 +150,7 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
   try {
     isc::db::PgSqlTransaction transaction(*g_pg_sql_connection);
 
-    auto [result, switch_name, port_id, switch_id] = parseOption82(query4_ptr);
+    auto [result, switch_id, port_id] = parseOption82(query4_ptr);
     if (result != 0) {
       return 1;
     }
@@ -174,7 +177,7 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
       if (r2.getRows() <= 0) {
         LOG_ERROR(kea_hook_logger, KEA_HOOK_UNKNOWN_ROOM)
             .arg(mac_address)
-            .arg(switch_name)
+            .arg(switch_id)
             .arg(port_id);
 
         return 1;
