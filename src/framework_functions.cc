@@ -72,8 +72,10 @@ int load(isc::hooks::LibraryHandle& handle) {
          {2,
           {isc::db::OID_TEXT, isc::db::OID_TEXT},
           "clear_port",
-          "update mueb set port_id = null, switch_id = null where port_id = $1 "
-          "and switch_id = $2"},
+          "update mueb m set port_id   = null, switch_id = null from port p "
+          "where m.port_id = p.port_id and m.switch_id = p.switch_id and "
+          "p.room_id = (select r.room_id from room r join port p using "
+          "(room_id) where p.port_id = $1 and p.switch_id = $2)"},
          {3,
           {829, isc::db::OID_TEXT, isc::db::OID_TEXT},
           "insert_or_update_mueb",

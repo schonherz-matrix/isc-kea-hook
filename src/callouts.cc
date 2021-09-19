@@ -90,7 +90,7 @@ int pkt4_receive(isc::hooks::CalloutHandle& handle) {
   values[0] = mac_address.c_str();
   values[1] = room_id;
 
-  // Drop packet if multiple MUEBs(excluding current) is in the same room
+  // Check if multiple MUEBs(excluding current) is in the same room
   isc::db::PgSqlResult r2(PQexecPrepared(*g_pg_sql_connection,
                                          "mueb_count_in_room", 2, values,
                                          nullptr, nullptr, 0));
@@ -98,8 +98,6 @@ int pkt4_receive(isc::hooks::CalloutHandle& handle) {
   try {
     if (std::stoi(PQgetvalue(r2, 0, 0)) > 0) {
       LOG_WARN(kea_hook_logger, KEA_HOOK_MULTIPLE_MUEB).arg(room_id);
-      handle.setStatus(isc::hooks::CalloutHandle::NEXT_STEP_DROP);
-      return 0;
     }
 
     isc::db::PgSqlResult r3(PQexecPrepared(*g_pg_sql_connection, "ip_conflict",
