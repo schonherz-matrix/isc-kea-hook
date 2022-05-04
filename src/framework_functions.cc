@@ -100,5 +100,11 @@ int load(isc::hooks::LibraryHandle& handle) {
   return 0;
 }
 
+int unload() {
+  delete g_pg_sql_connection;
+
+  return 0;
+}
+
 int multi_threading_compatible() { return 0; }
 }

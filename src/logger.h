@@ -9,4 +9,4 @@
 
 extern isc::log::Logger kea_hook_logger;
 
-#endif // KEA_HOOK_SRC_LOGGER_H_
+#endif  // KEA_HOOK_SRC_LOGGER_H_

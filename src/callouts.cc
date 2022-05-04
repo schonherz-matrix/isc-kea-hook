@@ -128,7 +128,7 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
   handle.getArgument("fake_allocation", fake_allocation);
 
   LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
-      .arg((fake_allocation) ? "---[DISCOVER]---" : "---[REQUEST]---");
+      .arg(fake_allocation ? "---[DISCOVER]---" : "---[REQUEST]---");
 
   const auto& hwaddr_ptr = query4_ptr->getHWAddr();
   const auto& mac_address = hwaddr_ptr->toText(false);
@@ -138,7 +138,7 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
       hwaddr_ptr->hwaddr_[2] != 0xEC) {
     LOG_INFO(kea_hook_logger, KEA_HOOK_NOT_MUEB).arg(mac_address);
     LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
-        .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
+        .arg(fake_allocation ? "---<DISCOVER>---" : "---<REQUEST>---");
 
     return 0;
   }
@@ -194,7 +194,7 @@ int lease4_select(isc::hooks::CalloutHandle& handle) {
 
     LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_QUERIED_IP).arg(ip_address);
     LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE)
-        .arg((fake_allocation) ? "---<DISCOVER>---" : "---<REQUEST>---");
+        .arg(fake_allocation ? "---<DISCOVER>---" : "---<REQUEST>---");
 
     // Save to DB when the DHCP state is DHCPREQUEST
     if (!fake_allocation) {
@@ -245,7 +245,7 @@ int lease4_renew(isc::hooks::CalloutHandle& handle) {
   handle.getArgument("query4", query4Ptr);
 
   const auto& isRequest = query4Ptr->getType() == isc::dhcp::DHCPREQUEST;
-  std::string tmp{(isRequest) ? "---[REQUEST" : "---[DISCOVER"};
+  std::string tmp{isRequest ? "---[REQUEST" : "---[DISCOVER"};
 
   LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_DHCP_STATE).arg(tmp + "(RENEW)]---");
 
