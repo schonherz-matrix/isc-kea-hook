@@ -4,75 +4,58 @@ Hook library for ISC Kea(https://kea.isc.org/), the library controls MUEB IP ass
 
 ## Prerequisites
 
-- Linux(**Ubuntu 20.04**, Debian 10)
-- ISC Kea **1.6** or above
-- MySQL **8.0.11** or above
-- CMake **3.16** or above
-- **SNMPpp**
+- Linux(**Ubuntu 20.04**, Debian 10), tested on ubuntu 20.04
+- ISC Kea **2.0+**
+- PostgreSQL **14+**
+- CMake **3.16+**
 - **C++ 20** compatible compiler
-
-## Install kea from repository
-
-Use stable packages from repository
-
-```bash
-sudo apt install -y kea-dhcp4-server kea-admin kea-dev
-```
 
 ## How to build
 
-### Install dependencies
+### Install PostgreSQL packages from official repository
 
-```bash
-sudo apt install -y build-essential qt5-default \
-libqt5sql5-mysql libboost-dev libsnmp-dev git cmake mysql-server
-cd /tmp
-git clone --depth=1 https://github.com/choopm/snmppp.git
-cd snmppp && cmake -B build && cmake --build build -j 4
-sudo cmake --install build
-```
-### Matrix-kea-hook library
+Follow the instructions here to setup the environment:
 
-```bash
-cd /tmp
-git clone --depth=1 https://git.sch.bme.hu/matrix-group/dhcp/matrix-kea-hook.git
-cd matrix-kea-hook && cmake -B build && cmake --build build -j 4
-sudo cmake --install build
-sudo ldconfig
-sudo mkdir /var/run/kea/
-```
+https://www.postgresql.org/download/
 
-## Kea MySQL database creation
+- postgresql-14
+- libpq-dev
+- postgresql-server-dev-14
 
-https://kea.readthedocs.io/en/kea-1.6.2/arm/admin.html#mysql-database-create
+### Install isc kea packages from official repository
+
+Follow the instructions here to setup the environment:
+
+https://cloudsmith.io/~isc/repos/kea-2-0/setup/#formats-deb
+
+After that install the following packages:
+
+- isc-kea-dhcp4-server
+- isc-kea-dev
+
+### Install build tools
+
+- [CMake](https://cmake.org/download/)
+
+- build-essential or compatible c++ 20 compiler
+
+After the installations build the project in release mode with cmake.
 
 ## How to run
 
+Install the project with cmake, after that:
+
 ```bash
-sudo kea-dhcp4 -c /etc/kea/matrix-kea-hook.conf
+sudo kea-dhcp4 -c /etc/kea/kea-dhcp4.conf
 ```
 
-Or with keactrl
+## How to generate log messages
+
+Use kea-msg-compiler
+
+https://reports.kea.isc.org/dev_guide/d8/d33/logKeaLogging.html#logMessageCompiler
 
 ```bash
-sudo keactrl start -c /etc/kea/matrix-keactrl.conf
-```
-
-## Optional how to build kea
-
-https://kb.isc.org/docs/installing-kea
-
-https://kea.readthedocs.io/en/kea-1.6.2/arm/install.html
-
-```bash
-./configure --with-mysql --enable-generate-messages
-make -j 4 && sudo make install
-```
-
-### How to use kea-msg-compiler
-
-```bash
-cd matrix-kea-hook/src
 kea-msg-compiler messages.mes
 ```
 
