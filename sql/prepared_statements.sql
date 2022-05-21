@@ -1,4 +1,4 @@
--- check switch
+-- check_switch
 select count(*) from switch where switch_id = :switch_id;
 
 -- ip_conflict
@@ -19,8 +19,8 @@ select ip_address from port p join room r using(room_id) where p.port_id = :port
 -- clear_port
 update mueb m set port_id   = null, switch_id = null from port p where m.port_id = p.port_id and m.switch_id = p.switch_id and p.room_id = (select r.room_id from room r join port p using (room_id) where p.port_id = :port_id and p.switch_id = :switch_id);
 
--- insert_mueb
+-- insert_or_update_mueb
 insert into mueb (mac_address) values (:mac_address) on conflict (mac_address) do update set port_id = :port_id, switch_id = :switch_id where mueb.mac_address = :mac_address;
 
--- set ip conflict
+-- set_ip_conflict
 update mueb m set ip_conflict = true where m.mac_address = :mac_address;
