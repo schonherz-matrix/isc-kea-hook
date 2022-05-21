@@ -20,7 +20,7 @@ int load(isc::hooks::LibraryHandle& handle) {
 
   if (!host_ptr || !port_ptr || !database_ptr || !username_ptr ||
       !password_ptr) {
-    LOG_FATAL(kea_hook_logger, KEA_HOOK_MISSING_PARAMETERS);
+    LOG_FATAL(schmatrix_isc_kea_hook_logger, SCHMATRIX_ISC_KEA_HOOK_MISSING_PARAMETERS);
 
     return 1;
   }
@@ -91,11 +91,11 @@ int load(isc::hooks::LibraryHandle& handle) {
                                            statements.cend());
 
   } catch (const std::exception& e) {
-    LOG_FATAL(kea_hook_logger, KEA_HOOK_DATABASE_FAILED).arg(e.what());
+    LOG_FATAL(schmatrix_isc_kea_hook_logger, SCHMATRIX_ISC_KEA_HOOK_DATABASE_FAILED).arg(e.what());
     return 1;
   }
 
-  LOG_DEBUG(kea_hook_logger, 0, KEA_HOOK_OPEN_DATABASE);
+  LOG_DEBUG(schmatrix_isc_kea_hook_logger, 0, SCHMATRIX_ISC_KEA_HOOK_OPEN_DATABASE);
 
   return 0;
 }
