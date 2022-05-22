@@ -4,10 +4,10 @@ Hook library for ISC Kea(https://kea.isc.org/), the library controls MUEB IP ass
 
 ## Prerequisites
 
-- Linux(**Ubuntu 20.04**, Debian 10), tested on ubuntu 20.04
-- ISC Kea **2.0+**
-- PostgreSQL **14+**
-- CMake **3.16+**
+- Linux(**[Ubuntu 20.04](https://ubuntu.com/download/server)**, Debian 10), tested on ubuntu 20.04
+- [ISC Kea](https://www.isc.org/download/#Kea) **2.0+**
+- [PostgreSQL](https://www.postgresql.org/download/) **14+**
+- [CMake](https://cmake.org/download/) **3.16+**
 - **C++ 20** compatible compiler
 
 ## How to build
